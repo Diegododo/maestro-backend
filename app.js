@@ -30,11 +30,13 @@ const authRoutes = require('./src/routes/auth');
 const spotifyRoutes = require('./src/routes/spotify');
 const friendsRoutes = require('./src/routes/friends');
 const usersRoutes = require('./src/routes/users');
+const widgetRoutes = require('./src/routes/widget');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/spotify', spotifyRoutes);
 app.use('/api/friends', friendsRoutes);
 app.use('/api/users', usersRoutes);
+app.use('/api/widget', widgetRoutes);
 
 // --- Import Realtime Polling Service ---
 const { initSpotifyPolling } = require('./src/services/spotifyService');
