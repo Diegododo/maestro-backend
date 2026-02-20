@@ -25,6 +25,17 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'OK', message: 'Backend is running' });
 });
 
+// Diagnostic endpoint (check env vars without revealing secrets)
+app.get('/health/env', (req, res) => {
+    res.json({
+        SPOTIFY_CLIENT_ID: process.env.SPOTIFY_CLIENT_ID ? '✅ SET' : '❌ MISSING',
+        SPOTIFY_CLIENT_SECRET: process.env.SPOTIFY_CLIENT_SECRET ? '✅ SET' : '❌ MISSING',
+        SPOTIFY_REDIRECT_URI: process.env.SPOTIFY_REDIRECT_URI || '❌ MISSING',
+        DATABASE_URL: process.env.DATABASE_URL ? '✅ SET' : '❌ MISSING',
+        NODE_ENV: process.env.NODE_ENV || 'not set',
+    });
+});
+
 // Import specific routes
 const authRoutes = require('./src/routes/auth');
 const spotifyRoutes = require('./src/routes/spotify');
