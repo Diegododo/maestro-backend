@@ -42,12 +42,16 @@ exports.spotifyCallback = async (req, res) => {
         });
 
         if (!created) {
-            await user.update({ accessToken: access_token, refreshToken: refresh_token });
+            await user.update({
+                accessToken: access_token, refreshToken: refresh_token,
+                displayName: me.body.display_name || me.body.id,
+                avatarUrl: me.body.images?.length ? me.body.images[0].url : null
+            });
         }
 
-        // 4. Return custom internal token or the user details 
-        // Usually we redirect back to deep link:
-        res.redirect(`musicsocialapp://feed?token=${user.id}`);
+        // 4. Redirect — web page or deep link
+        const displayName = encodeURIComponent(user.displayName);
+        res.redirect(`/?token=${user.id}&name=${displayName}`);
 
     } catch (error) {
         console.error('Error in Spotify Callback Auth:', error);

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAESTRO — Connexion</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: #FDFCF8;
+            color: #2D2825;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .card {
+            background: rgba(255,255,255,0.7);
+            backdrop-filter: blur(20px);
+            border: 1px solid #EAE6DF;
+            border-radius: 24px;
+            padding: 40px 32px;
+            max-width: 380px;
+            width: 100%;
+            text-align: center;
+        }
+        .logo { font-size: 48px; margin-bottom: 8px; }
+        h1 { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+        .subtitle { color: #8A7F75; font-size: 14px; margin-bottom: 32px; }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: #1DB954;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            padding: 14px 28px;
+            font-size: 16px;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .btn:hover { transform: scale(1.03); box-shadow: 0 8px 24px rgba(29,185,84,0.3); }
+        .btn svg { width: 24px; height: 24px; }
+        .id-box {
+            background: #F5F0E8;
+            border: 1px solid #EAE6DF;
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 24px;
+            word-break: break-all;
+        }
+        .id-label { font-size: 12px; color: #8A7F75; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        .id-value { font-size: 14px; font-weight: 600; font-family: monospace; }
+        .copy-btn {
+            background: #71655D;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            padding: 10px 20px;
+            font-size: 14px;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 12px;
+            transition: background 0.2s;
+        }
+        .copy-btn:hover { background: #5a4e47; }
+        .success { color: #1DB954; font-size: 13px; margin-top: 8px; }
+        .instructions {
+            margin-top: 24px;
+            text-align: left;
+            font-size: 13px;
+            color: #8A7F75;
+            line-height: 1.7;
+        }
+        .instructions li { margin-bottom: 4px; }
+        .name { font-size: 18px; font-weight: 600; margin-top: 16px; }
+    </style>
+</head>
+<body>
+    <div class="card" id="main">
+        <div class="logo">🎧</div>
+        <h1>MAESTRO</h1>
+        <p class="subtitle">Vois ce que tes amis écoutent</p>
+        <a class="btn" id="loginBtn" href="#">
+            <svg viewBox="0 0 24 24" fill="white"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+            Se connecter avec Spotify
+        </a>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        const params = new URLSearchParams(window.location.search);
+        const token = params.get('token');
+        const name = params.get('name');
+
+        if (token && name) {
+            // Show the user's ID
+            document.getElementById('main').innerHTML = `
+                <div class="logo">✅</div>
+                <h1>Bienvenue !</h1>
+                <p class="name">${decodeURIComponent(name)}</p>
+                <div class="id-box">
+                    <div class="id-label">Ton ID pour le widget</div>
+                    <div class="id-value" id="userId">${token}</div>
+                </div>
+                <button class="copy-btn" onclick="copyId()">📋 Copier mon ID</button>
+                <div class="success" id="copied" style="display:none">Copié !</div>
+                <div class="instructions">
+                    <strong>Prochaines étapes :</strong>
+                    <ol>
+                        <li>Copie ton ID ci-dessus</li>
+                        <li>Installe <a href="https://apps.apple.com/app/scriptable/id1405459188" target="_blank">Scriptable</a></li>
+                        <li>Demande le script du widget à Diego</li>
+                        <li>Colle ton ID dans le script</li>
+                        <li>Ajoute le widget sur ton écran d'accueil !</li>
+                    </ol>
+                </div>
+            `;
+        } else {
+            // Build Spotify login URL
+            const clientId = 'b60efc94de3a482492d29146f4f56cc9';
+            const redirectUri = encodeURIComponent(`${API_BASE}/api/auth/spotify/callback`);
+            const scopes = encodeURIComponent('user-read-currently-playing user-read-email user-read-private');
+            const spotifyUrl = `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&scope=${scopes}`;
+            
+            document.getElementById('loginBtn').href = spotifyUrl;
+        }
+
+        function copyId() {
+            const id = document.getElementById('userId').textContent;
+            navigator.clipboard.writeText(id).then(() => {
+                document.getElementById('copied').style.display = 'block';
+                setTimeout(() => document.getElementById('copied').style.display = 'none', 2000);
+            });
+        }
+    </script>
+</body>
+</html>

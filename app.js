@@ -5,6 +5,8 @@ const http = require('http');
 const { Server } = require('socket.io');
 const { initPG, initRedis } = require('./src/config/db');
 
+const path = require('path');
+
 dotenv.config();
 
 const app = express();
@@ -19,6 +21,7 @@ const io = new Server(server, {
 // Middlewares
 app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
 app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Routes
 app.get('/health', (req, res) => {
