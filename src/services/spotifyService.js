@@ -3,20 +3,52 @@ const SpotifyWebApi = require('spotify-web-api-node');
 const { getRedisClient } = require('../config/db');
 const User = require('../models/User');
 
-// In-memory store for active socket connections
-// Map<userId, socketId>
+// In-memory stores
 const activeUsers = new Map();
+const nowPlayingCache = new Map(); // Fallback when Redis is unavailable
+
+// Helper: get/set cache (Redis or in-memory)
+async function getCached(key) {
+    const redisClient = getRedisClient();
+    if (redisClient) {
+        try {
+            return await redisClient.get(key);
+        } catch (e) { /* fall through to memory */ }
+    }
+    return nowPlayingCache.get(key) || null;
+}
+
+async function setCached(key, value, ttlSeconds) {
+    const redisClient = getRedisClient();
+    if (redisClient) {
+        try {
+            await redisClient.setEx(key, ttlSeconds, value);
+        } catch (e) { /* fall through to memory */ }
+    }
+    nowPlayingCache.set(key, value);
+    // Auto-expire from memory
+    setTimeout(() => nowPlayingCache.delete(key), ttlSeconds * 1000);
+}
+
+async function getAllCachedKeys() {
+    const redisClient = getRedisClient();
+    if (redisClient) {
+        try {
+            return await redisClient.keys('now_playing:*');
+        } catch (e) { /* fall through */ }
+    }
+    return Array.from(nowPlayingCache.keys()).filter(k => k.startsWith('now_playing:'));
+}
 
 const initSpotifyPolling = (io) => {
-    // 1. Listen for active socket connections
     io.on('connection', async (socket) => {
-        const userId = socket.handshake.auth.token; // In MVP, we passed userId as token directly
+        const userId = socket.handshake.auth.token;
 
         if (userId) {
             console.log(`User ${userId} active on socket ${socket.id}`);
             activeUsers.set(userId, socket.id);
 
-            // Fetch friends of the connecting user
+            // Fetch friends
             const Friend = require('../models/Friend');
             let friendIds = [];
             try {
@@ -25,24 +57,21 @@ const initSpotifyPolling = (io) => {
                     attributes: ['friendId']
                 });
                 friendIds = friendsRecords.map(f => f.friendId.toString());
-                friendIds.push(userId.toString()); // Also include themselves
+                friendIds.push(userId.toString());
             } catch (err) {
                 console.error("Error fetching friends for initial state", err);
             }
 
-            // Fetch and send current known states from Redis to this new user!
-            const redisClient = getRedisClient();
+            // Send cached states to new user
             try {
-                const keys = await redisClient.keys('now_playing:*');
+                const keys = await getAllCachedKeys();
                 for (const key of keys) {
                     const authorId = key.replace('now_playing:', '');
-                    // Only send data if the author is a friend (or the user themselves)
                     if (friendIds.includes(authorId)) {
-                        const dataStr = await redisClient.get(key);
+                        const dataStr = await getCached(key);
                         if (dataStr) {
                             const activity = JSON.parse(dataStr);
                             if (activity.isPlaying) {
-                                console.log(`[DEBUG] [INIT] Sending ${authorId}'s activity to user ${userId}`);
                                 socket.emit('friends_activity_update', activity);
                             }
                         }
@@ -59,53 +88,26 @@ const initSpotifyPolling = (io) => {
         }
     });
 
-    // 2. Cron job running every 5 seconds
+    // Cron job every 5 seconds
     cron.schedule('*/5 * * * * *', async () => {
         if (activeUsers.size === 0) return;
 
-        const redisClient = getRedisClient();
         const { Op } = require('sequelize');
 
-        // Poll ALL users who have connected their Spotify account (so the feed works even if app is in background)
-        // This ensures that when User A opens the app, they see User B's music even if User B's app is closed.
         const usersToPoll = await User.findAll({
-            where: {
-                accessToken: { [Op.ne]: null }
-            }
+            where: { accessToken: { [Op.ne]: null } }
         });
 
         for (const user of usersToPoll) {
             const userId = user.id.toString();
 
             try {
-                // Initialize Spotify API
                 const spotifyApi = new SpotifyWebApi({
                     clientId: process.env.SPOTIFY_CLIENT_ID,
                     clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
                 });
                 spotifyApi.setAccessToken(user.accessToken);
 
-                // Re-fetch the user details from Spotify to force a name / avatar update in the background if it changed!
-                try {
-                    const me = await spotifyApi.getMe();
-                    const newDisplayName = me.body.display_name || me.body.id;
-                    const newAvatarUrl = me.body.images?.length ? me.body.images[0].url : null;
-
-                    if (user.displayName !== newDisplayName || user.avatarUrl !== newAvatarUrl) {
-                        await user.update({
-                            displayName: newDisplayName,
-                            avatarUrl: newAvatarUrl
-                        });
-                        console.log(`Updated profile for ${userId} in background`);
-                    }
-                } catch (e) {
-                    console.error("Failed to fetch fresh profile data in background", e.message);
-                }
-
-                // Note: We skip refresh token logic here for the MVP simplicity.
-                // In production, we must catch 401s and use refreshToken to get a new access token.
-
-                // Get What they are playing
                 const data = await spotifyApi.getMyCurrentPlayingTrack();
 
                 let currentActivity = { isPlaying: false, id: userId, name: user.displayName };
@@ -126,15 +128,13 @@ const initSpotifyPolling = (io) => {
                     };
                 }
 
-                // Check Redis for previous state
+                // Check cache for changes
                 const redisKey = `now_playing:${userId}`;
-                const previousStateStr = await redisClient.get(redisKey);
+                const previousStateStr = await getCached(redisKey);
 
                 let hasChanged = true;
                 if (previousStateStr) {
                     const previousState = JSON.parse(previousStateStr);
-                    // Compare track name to see if it changed
-                    // ALSO compare profile info (name, avatar) so UI updates instantly when testing profile changes
                     if (previousState.isPlaying === currentActivity.isPlaying &&
                         previousState.track === currentActivity.track &&
                         previousState.name === currentActivity.name &&
@@ -144,30 +144,19 @@ const initSpotifyPolling = (io) => {
                 }
 
                 if (hasChanged) {
-                    console.log(`[DEBUG] Activity changed for ${user.displayName}: ${currentActivity.isPlaying ? currentActivity.track : 'Paused'}`);
+                    await setCached(redisKey, JSON.stringify(currentActivity), 180);
 
-                    // Update Redis (Expire after 3 minutes)
-                    await redisClient.setEx(redisKey, 180, JSON.stringify(currentActivity));
-
-                    // Fetch friends of this user
                     const Friend = require('../models/Friend');
                     const friendsRecords = await Friend.findAll({
                         where: { userId: userId, status: 'accepted' },
                         attributes: ['friendId']
                     });
                     const friendIds = friendsRecords.map(f => f.friendId);
-
-                    // Broadcast ONLY to active friends (and the user themselves if needed)
-                    // Ensure the acting user gets their own update to see their own feed if desired
                     friendIds.push(userId);
-
-                    console.log(`[DEBUG] Broadcasting ${user.displayName}'s activity to user IDs:`, friendIds);
-                    console.log(`[DEBUG] Currently active sockets:`, Array.from(activeUsers.keys()));
 
                     for (const fId of friendIds) {
                         const friendSocketId = activeUsers.get(fId);
                         if (friendSocketId) {
-                            console.log(`[DEBUG] -> Sending to active user ${fId} on socket ${friendSocketId}`);
                             io.to(friendSocketId).emit('friends_activity_update', currentActivity);
                         }
                     }
