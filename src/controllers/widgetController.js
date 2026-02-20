@@ -18,23 +18,26 @@ exports.getWidgetActivities = async (req, res) => {
 
         const friendIds = friendsRecords.map(f => f.friendId.toString());
 
-        // Get each friend's user data (with Spotify tokens)
-        const friends = await User.findAll({
+        // Also include the user themselves so they see their own music
+        friendIds.push(userId);
+
+        // Get each person's user data (with Spotify tokens)
+        const users = await User.findAll({
             where: { id: friendIds }
         });
 
         const activities = [];
 
-        // Query Spotify directly for each friend
-        for (const friend of friends) {
-            if (!friend.accessToken) continue;
+        // Query Spotify directly for each user/friend
+        for (const person of users) {
+            if (!person.accessToken) continue;
 
             try {
                 const spotifyApi = new SpotifyWebApi({
                     clientId: process.env.SPOTIFY_CLIENT_ID,
                     clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
                 });
-                spotifyApi.setAccessToken(friend.accessToken);
+                spotifyApi.setAccessToken(person.accessToken);
 
                 const data = await spotifyApi.getMyCurrentPlayingTrack();
 
@@ -42,9 +45,9 @@ exports.getWidgetActivities = async (req, res) => {
                     const track = data.body.item;
                     activities.push({
                         isPlaying: true,
-                        id: friend.id,
-                        name: friend.displayName,
-                        avatar: friend.avatarUrl,
+                        id: person.id,
+                        name: person.displayName,
+                        avatar: person.avatarUrl,
                         track: track.name,
                         artist: track.artists.map(a => a.name).join(', '),
                         albumArt: track.album.images.length > 0 ? track.album.images[0].url : null,
@@ -53,8 +56,7 @@ exports.getWidgetActivities = async (req, res) => {
                     });
                 }
             } catch (spotifyErr) {
-                // Token expired or invalid — skip this friend silently
-                console.log(`Widget: Could not fetch Spotify for ${friend.displayName}: ${spotifyErr.message}`);
+                console.log(`Widget: Could not fetch Spotify for ${person.displayName}: ${spotifyErr.message}`);
             }
         }
 
